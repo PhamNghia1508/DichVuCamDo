@@ -77,9 +77,11 @@ npm run build:static   # static GitHub Pages demo into ./out (agent runs in-brow
 
 ## Deploy (Vercel)
 
-1. Import this repo at [vercel.com/new](https://vercel.com/new) (framework: Next.js, no config needed).
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FPhamNghia1508%2Ftastecircle&env=QLOO_API_KEY,LLM_API_KEY,LLM_BASE_URL,LLM_MODEL&envDescription=Qloo%20hackathon%20key%20and%20an%20OpenAI-compatible%20LLM%20key%20(both%20optional%3A%20empty%20%3D%20mock%2Fdeterministic%20mode))
+
+1. Import this repo at [vercel.com/new](https://vercel.com/new) (framework: Next.js, no config needed) — or use the button above.
 2. Add `QLOO_API_KEY`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` under *Settings → Environment Variables*.
-3. Deploy. `POST /api/plan` runs as a Node serverless function (`maxDuration = 60`).
+3. Deploy. `POST /api/plan` runs as a Node function (`maxDuration = 120`, within the Hobby plan's 300 s limit).
 
 ## Project layout
 

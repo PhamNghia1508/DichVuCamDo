@@ -5,7 +5,7 @@ import type { AgentEvent } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 120; // LLM tool loop can take a while; Vercel Hobby allows up to 300s
 
 export async function POST(req: Request) {
   let body: unknown;
