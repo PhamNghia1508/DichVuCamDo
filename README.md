@@ -5,7 +5,7 @@ TasteCircle is an AI agent that plans a group outing everyone will actually enjo
 
 Built for the [Qloo Agentic Hackathon](https://qloo.devpost.com/).
 
-- **Live app:** _coming soon (Vercel)_ · **Static demo (sample data, no server):** https://phamnghia1508.github.io/tastecircle/
+- **Live app:** _coming soon (Vercel)_ · **Static demo (sample data, no server):** https://phamnghia1508.github.io/DichVuCamDo/
 - **License:** [MIT](./LICENSE)
 
 | Plan with your friends | Watch the agent work, get a plan with a reason for everyone |
@@ -50,8 +50,8 @@ The agent's tool calls stream live to the UI (newline-delimited JSON from `POST 
 Requires Node 18.18+.
 
 ```bash
-git clone https://github.com/PhamNghia1508/tastecircle.git
-cd tastecircle
+git clone https://github.com/PhamNghia1508/DichVuCamDo.git
+cd DichVuCamDo
 npm install
 cp .env.example .env.local   # optional: fill in keys; empty = mock mode
 npm run dev                  # http://localhost:3000
@@ -83,7 +83,7 @@ npm run build:static   # static GitHub Pages demo into ./out (agent runs in-brow
 
 ## Deploy (Vercel)
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FPhamNghia1508%2Ftastecircle&env=QLOO_API_KEY,LLM_API_KEY,LLM_BASE_URL,LLM_MODEL&envDescription=Qloo%20hackathon%20key%20and%20an%20OpenAI-compatible%20LLM%20key%20(both%20optional%3A%20empty%20%3D%20mock%2Fdeterministic%20mode))
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FPhamNghia1508%2FDichVuCamDo&env=QLOO_API_KEY,LLM_API_KEY,LLM_BASE_URL,LLM_MODEL&envDescription=Qloo%20hackathon%20key%20and%20an%20OpenAI-compatible%20LLM%20key%20(both%20optional%3A%20empty%20%3D%20mock%2Fdeterministic%20mode))
 
 1. Import this repo at [vercel.com/new](https://vercel.com/new) (framework: Next.js, no config needed) — or use the button above.
 2. Add `QLOO_API_KEY`, `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` under *Settings → Environment Variables*.

@@ -6,7 +6,7 @@ import { existsSync, renameSync, writeFileSync } from "node:fs";
 
 const api = "app/api";
 const parked = ".api-parked";
-const basePath = process.env.PAGES_BASE_PATH ?? "/tastecircle";
+const basePath = process.env.PAGES_BASE_PATH ?? "/DichVuCamDo";
 if (existsSync(api)) renameSync(api, parked);
 try {
   execSync("npx next build", {
