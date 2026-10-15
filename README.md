@@ -8,6 +8,12 @@ Built for the [Qloo Agentic Hackathon](https://qloo.devpost.com/).
 - **Live app:** _coming soon (Vercel)_ · **Static demo (sample data, no server):** https://phamnghia1508.github.io/tastecircle/
 - **License:** [MIT](./LICENSE)
 
+| Plan with your friends | Watch the agent work, get a plan with a reason for everyone |
+|---|---|
+| ![TasteCircle home](docs/screenshot-home.png) | ![TasteCircle itinerary](docs/screenshot-plan.png) |
+
+<sub>Screenshots use mock mode (hand-written sample data).</sub>
+
 ---
 
 ## How it works
