@@ -1,0 +1,30 @@
+{
+  "name": "tastecircle",
+  "version": "0.1.0",
+  "private": true,
+  "description": "An AI agent that plans group outings everyone will love, powered by Qloo's Taste AI.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx scripts/smoke.ts && tsx scripts/llm-loop.test.ts",
+    "build:static": "node scripts/build-static.mjs"
+  },
+  "engines": {
+    "node": ">=18.18"
+  },
+  "dependencies": {
+    "next": "^15.5.28",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9"
+  }
+}

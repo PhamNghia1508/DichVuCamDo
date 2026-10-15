@@ -1,0 +1,12 @@
+node_modules/
+.next/
+out/
+.env
+.env*.local
+*.tsbuildinfo
+next-env.d.ts
+.vercel
+# Never commit Qloo API responses (terms of the hackathon key)
+qloo-cache/
+*.qloo.json
+.api-parked/
