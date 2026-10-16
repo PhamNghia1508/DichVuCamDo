@@ -68,7 +68,7 @@ export function GroupBuilder({ members, onChange, highlight }: { members: Member
                 aria-label={`Name of friend ${i + 1}`}
                 onChange={(e) => update(i, { name: e.target.value })}
               />
-              <span className={`member-count mono ${count ? "on" : ""}`}>{count ? `${count} picks` : "empty"}</span>
+              <span className={`member-count mono ${count ? "on" : ""}`}>{count ? `${count} ${count === 1 ? "pick" : "picks"}` : "empty"}</span>
               {members.length > 2 && (
                 <button
                   type="button"

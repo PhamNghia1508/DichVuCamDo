@@ -284,8 +284,8 @@ input { font: inherit; color: inherit; }
 .artist-cover { aspect-ratio: 1; border-radius: 10px; margin-bottom: 6px; transition: transform 0.4s var(--ease), box-shadow 0.4s var(--ease); }
 .artist-cover.cover-fallback { font-size: 54px; }
 .artist:hover .artist-cover { transform: translate(-2px, -2px); box-shadow: 4px 4px 0 var(--ink); }
-.artist .an { font-weight: 600; font-size: 14.5px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.artist .as { color: var(--ink-3); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artist .an { font-weight: 600; font-size: 14.5px; line-height: 1.2; overflow-wrap: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.artist .as { color: var(--ink-3); font-size: 10px; overflow-wrap: break-word; }
 .prog-actions { display: flex; gap: 10px; flex-wrap: wrap; padding: 20px 34px 24px; border-top: 1px solid var(--ink); background: var(--paper-hi); align-items: center; }
 .toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 12px 20px; border-radius: 999px; font-size: 14.5px; animation: toast-in 0.3s var(--ease) both; z-index: 50; display: flex; align-items: center; gap: 8px; }
 .toast::before { content: "✓"; color: var(--signal); font-weight: 700; }
@@ -395,7 +395,7 @@ code { font-family: var(--mono); font-size: 12.5px; background: var(--card); bor
 .fit-bar { height: 8px; border-radius: 8px; background: var(--line); overflow: hidden; }
 .fit-bar i { display: block; height: 100%; width: var(--v); background: var(--m); border-radius: 8px; animation: grow 1s var(--ease) both 0.25s; transform-origin: left; }
 .fit-num { text-align: right; font-size: 11.5px; color: var(--ink); }
-.fit-why { color: var(--ink-3); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fit-why { color: var(--ink-3); font-size: 12.5px; overflow-wrap: break-word; }
 .fit-why em { font-style: italic; font-family: var(--display); font-size: 15px; color: var(--ink-2); }
 .stop.is-changed { background: linear-gradient(90deg, transparent, rgba(255, 74, 28, 0.06) 40%, transparent); }
 .stop-new { color: var(--ink); background: var(--signal); border: 1px solid var(--ink); border-radius: 999px; padding: 1px 8px; font-size: 10px; margin-top: var(--s2); }
