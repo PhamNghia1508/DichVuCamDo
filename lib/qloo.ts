@@ -114,16 +114,57 @@ function parseExplain(raw: any): Record<string, number> {
   return out;
 }
 
+// The hackathon key is rate-limited, so live calls go through a small queue
+// (max 2 in flight, spaced out), retry 429/5xx with backoff, and are cached in memory.
+const MAX_IN_FLIGHT = 2;
+const MIN_GAP_MS = 350;
+let inFlight = 0;
+let lastStart = 0;
+const waiters: Array<() => void> = [];
+const cache = new Map<string, { at: number; data: unknown }>();
+const CACHE_MS = 30 * 60 * 1000;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function acquire() {
+  while (inFlight >= MAX_IN_FLIGHT) await new Promise<void>((r) => waiters.push(r));
+  inFlight++;
+  const wait = lastStart + MIN_GAP_MS - Date.now();
+  lastStart = Math.max(Date.now(), lastStart + MIN_GAP_MS);
+  if (wait > 0) await sleep(wait);
+}
+function release() {
+  inFlight--;
+  waiters.shift()?.();
+}
+
 function liveClient(apiKey: string, base: string): QlooClient {
   async function get(path: string, params: Record<string, string | number | undefined>) {
     const url = new URL(path, base);
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
-    const res = await fetch(url, { method: "GET", headers: { "X-Api-Key": apiKey, accept: "application/json" }, cache: "no-store" });
-    if (!res.ok) {
+    const cacheKey = url.toString();
+    const hit = cache.get(cacheKey);
+    if (hit && Date.now() - hit.at < CACHE_MS) return hit.data as any;
+    let lastErr = "";
+    for (let attempt = 0; attempt < 6; attempt++) {
+      await acquire();
+      let res: Response;
+      try {
+        res = await fetch(url, { method: "GET", headers: { "X-Api-Key": apiKey, accept: "application/json" }, cache: "no-store" });
+      } finally {
+        release();
+      }
+      if (res.ok) {
+        const data = await res.json();
+        cache.set(cacheKey, { at: Date.now(), data });
+        return data;
+      }
       const text = await res.text().catch(() => "");
-      throw new Error(`Qloo ${path} ${res.status}: ${text.slice(0, 200)}`);
+      lastErr = `Qloo ${path} ${res.status}: ${text.slice(0, 200)}`;
+      if (res.status !== 429 && res.status < 500) break;
+      const retryAfter = Number(res.headers.get("retry-after"));
+      await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 800 * 2 ** attempt);
     }
-    return res.json();
+    throw new Error(lastErr);
   }
 
   return {
