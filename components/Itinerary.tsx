@@ -14,12 +14,12 @@ function mapsUrl(e: Entity, city: string) {
 }
 
 /** Qloo entity image with a typographic fallback (initial on a tinted card). */
-function Cover({ e, i = 0, className = "" }: { e: Entity; i?: number; className?: string }) {
+export function Cover({ e, i = 0, className = "" }: { e: Entity; i?: number; className?: string }) {
   const [broken, setBroken] = useState(false);
   if (okImg(e.image) && !broken)
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img className={`cover ${className}`} src={e.image} alt={e.name} loading="eager" referrerPolicy="no-referrer" onError={() => setBroken(true)} />
+      <img className={`cover ${className}`} src={e.image} alt="" loading="eager" decoding="async" referrerPolicy="no-referrer" onError={() => setBroken(true)} />
     );
   return (
     <span className={`cover cover-fallback ${className}`} style={{ ["--m" as string]: colorFor(i + 1) }} aria-hidden>
@@ -28,25 +28,38 @@ function Cover({ e, i = 0, className = "" }: { e: Entity; i?: number; className?
   );
 }
 
-function Score({ stop }: { stop: ItineraryStop }) {
-  if (stop.consensus === undefined) return null;
+/** Per-member taste fit with the favourite Qloo's explainability credits. The signature read of every stop. */
+function FitStrip({ stop, plan }: { stop: ItineraryStop; plan: Plan }) {
+  if (!stop.memberScores) return null;
+  const min = Math.min(...plan.members.map((m) => stop.memberScores?.[m] ?? 0));
   return (
-    <div className="score">
-      <div className="score-num">
-        <span className="big">{pct(stop.consensus)}</span>
-        <span className="mono">% group
-          <br />
-          consensus</span>
+    <div className="fit">
+      <div className="fit-head mono">
+        <span>
+          <b>{pct(stop.consensus)}</b> consensus
+        </span>
+        <span>
+          <b>{pct(stop.fairness)}</b> fairness
+        </span>
+        {stop.bridgeFor && <span className="fit-bridge">Bridge pick for {stop.bridgeFor}</span>}
       </div>
-      <div className="score-fair">
-        <div className="score-fair-top mono">
-          <span>Fairness</span>
-          <span>{pct(stop.fairness)}%</span>
-        </div>
-        <div className="bar">
-          <i style={{ width: `${pct(stop.fairness)}%` }} />
-        </div>
-      </div>
+      <ul className="fit-rows">
+        {plan.members.map((m, i) => {
+          const v = stop.memberScores?.[m] ?? 0;
+          const d = stop.drivers?.[m]?.[0];
+          return (
+            <li key={m} className={`fit-row ${v === min && plan.members.length > 2 ? "low" : ""}`} style={{ ["--m" as string]: colorFor(i), ["--v" as string]: `${Math.max(3, pct(v))}%` }}>
+              <Avatar name={m} i={i} />
+              <span className="fit-name">{m}</span>
+              <span className="fit-bar" aria-hidden>
+                <i />
+              </span>
+              <span className="fit-num mono">{pct(v)}</span>
+              <span className="fit-why">{d ? <>via {d.name}</> : <em>stretch pick</em>}</span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -68,17 +81,18 @@ function Whys({ stop, plan }: { stop: ItineraryStop; plan: Plan }) {
   );
 }
 
-function Stop({ stop, plan, n }: { stop: ItineraryStop; plan: Plan; n: number }) {
+function Stop({ stop, plan, n, changed }: { stop: ItineraryStop; plan: Plan; n: number; changed: boolean }) {
   const I = Icon[stop.slot];
   const e = stop.entity;
   return (
-    <li className={`stop slot-${stop.slot}`} style={{ animationDelay: `${n * 90}ms` }}>
+    <li className={`stop slot-${stop.slot} ${changed ? "is-changed" : ""}`} style={{ animationDelay: `${n * 90}ms` }}>
       <div className="stop-rail">
         <span className="stop-n mono">{String(n + 1).padStart(2, "0")}</span>
-        <span className="stop-time mono">{stop.time ?? (stop.slot === "playlist" ? "On the way" : "Later")}</span>
+        <span className="stop-time mono">{stop.time ?? (stop.slot === "playlist" ? "On the way" : "Another night")}</span>
         <span className="stop-kicker">
           <I /> {stop.title}
         </span>
+        {changed && <span className="stop-new mono">Updated</span>}
       </div>
       <div className="stop-body">
         {e && (
@@ -88,8 +102,9 @@ function Stop({ stop, plan, n }: { stop: ItineraryStop; plan: Plan; n: number })
               <h3>{e.name}</h3>
               <div className="stop-sub mono">
                 {e.subtitle && <span>{e.subtitle}</span>}
+                {e.neighborhood && <span>{e.neighborhood}</span>}
                 {price(e.priceLevel) && <span>{price(e.priceLevel)}</span>}
-                {e.rating && <span>★ {e.rating.toFixed(1)}</span>}
+                {e.facets?.noise && <span>{e.facets.noise} room</span>}
                 {e.kind === "place" && (
                   <a href={mapsUrl(e, plan.city)} target="_blank" rel="noreferrer">
                     Maps ↗
@@ -97,16 +112,14 @@ function Stop({ stop, plan, n }: { stop: ItineraryStop; plan: Plan; n: number })
                 )}
               </div>
               <p className="stop-blurb">{stop.blurb}</p>
-              <Score stop={stop} />
             </div>
           </div>
         )}
+        {e && <FitStrip stop={stop} plan={plan} />}
         {stop.entities && (
           <>
             <div className="stop-text">
-              <h3>
-                {stop.entities.length} artists you all share
-              </h3>
+              <h3>{stop.entities.length} artists between you</h3>
               <p className="stop-blurb">{stop.blurb}</p>
             </div>
             <div className="artists">
@@ -118,7 +131,7 @@ function Stop({ stop, plan, n }: { stop: ItineraryStop; plan: Plan; n: number })
                 </a>
               ))}
             </div>
-            <Score stop={stop} />
+            <FitStrip stop={stop} plan={plan} />
           </>
         )}
         <Whys stop={stop} plan={plan} />
@@ -134,43 +147,54 @@ export function planAsText(plan: Plan) {
     lines.push(`${s.time ? s.time + " · " : ""}${s.title}: ${what}`);
     lines.push(`  ${s.blurb}`);
   }
-  lines.push("", "Planned with TasteCircle (powered by Qloo Taste AI)");
+  lines.push("", "Planned with TasteCircle · taste data by Qloo");
   return lines.join("\n");
 }
 
-export function Itinerary({ plan, shared = false }: { plan: Plan; shared?: boolean }) {
+export function Itinerary({ plan, previous, shared = false, footer }: { plan: Plan; previous?: Plan | null; shared?: boolean; footer?: React.ReactNode }) {
   const [toast, setToast] = useState<string | null>(null);
   const flash = (t: string) => {
     setToast(t);
     setTimeout(() => setToast(null), 1800);
   };
-  const shareLink = () => `${window.location.origin}${BASE_PATH}/plan${IS_STATIC_DEMO ? "/" : ""}#${encodePlan(plan)}`;
   const share = async () => {
-    const url = shareLink();
+    const url = `${window.location.origin}${BASE_PATH}/plan${IS_STATIC_DEMO ? "/" : ""}#${await encodePlan(plan)}`;
     try {
       if (navigator.share && /Mobi/.test(navigator.userAgent)) await navigator.share({ title: plan.title, text: plan.summary, url });
       else {
         await navigator.clipboard.writeText(url);
-        flash("Share link copied");
+        flash("Link copied — paste it in the group chat");
       }
     } catch {
       /* cancelled */
     }
   };
   const live = plan.mode.qloo === "live";
+  const changedSlot = (s: ItineraryStop) => {
+    if (!previous) return false;
+    const p = previous.stops.find((x) => x.slot === s.slot);
+    if (!p) return true;
+    return (p.entity?.id ?? p.entities?.map((e) => e.id).join()) !== (s.entity?.id ?? s.entities?.map((e) => e.id).join());
+  };
+  const lastChange = plan.changes?.[plan.changes.length - 1];
   return (
-    <article className="prog">
+    <article className="prog" key={plan.createdAt}>
       <header className="prog-head">
         <div className="prog-meta mono">
           <span>{plan.city}</span>
           <span>{plan.members.length} people</span>
           {plan.vibe && <span>{plan.vibe}</span>}
           <span className={`tag ${live ? "live" : ""}`}>
-            {live ? "Qloo live" : "Sample data"} · {plan.mode.planner === "llm" ? plan.mode.model : "rule-based planner"}
+            {live ? "Qloo live data" : "Sample data"} · {plan.mode.planner === "llm" ? plan.mode.model : "rule-based planner"}
           </span>
         </div>
         <h2>{plan.title}</h2>
         <p className="prog-sum">{plan.summary}</p>
+        {previous && lastChange && (
+          <p className="prog-change">
+            <span className="mono">What changed</span> {lastChange}
+          </p>
+        )}
         <div className="faces">
           {plan.members.map((m, i) => (
             <span className="face" key={m}>
@@ -182,12 +206,23 @@ export function Itinerary({ plan, shared = false }: { plan: Plan; shared?: boole
       </header>
       <ol className="stops">
         {plan.stops.map((s, n) => (
-          <Stop key={s.slot} stop={s} plan={plan} n={n} />
+          <Stop key={s.slot} stop={s} plan={plan} n={n} changed={changedSlot(s)} />
         ))}
       </ol>
+      {plan.critiques && plan.critiques.length > 0 && (
+        <div className="prog-critic">
+          <span className="mono">How the agent kept it fair</span>
+          <ul>
+            {plan.critiques.slice(-3).map((c) => (
+              <li key={c}>{c}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {footer}
       <div className="prog-actions">
         <button className="btn btn-signal btn-sm" onClick={share}>
-          Share itinerary <span className="arr" aria-hidden>↗</span>
+          Send to the group <span className="arr" aria-hidden>↗</span>
         </button>
         <button
           className="btn btn-line btn-sm"
@@ -199,12 +234,17 @@ export function Itinerary({ plan, shared = false }: { plan: Plan; shared?: boole
           Copy as text
         </button>
         <button className="btn btn-line btn-sm" onClick={() => window.print()}>
-          Print / PDF
+          Print
         </button>
         {shared && (
           <a className="btn btn-ink btn-sm" href={`${BASE_PATH}/`}>
             Plan your own night <span className="arr" aria-hidden>→</span>
           </a>
+        )}
+        {plan.stats && (
+          <span className="prog-stats mono">
+            {plan.stats.qlooCalls} Qloo calls · {plan.stats.llmTurns} agent turns · {(plan.stats.ms / 1000).toFixed(0)}s
+          </span>
         )}
       </div>
       {toast && (
@@ -216,7 +256,7 @@ export function Itinerary({ plan, shared = false }: { plan: Plan; shared?: boole
   );
 }
 
-export function ItinerarySkeleton() {
+export function ItinerarySkeleton({ note = "Drawing up your circle’s programme…" }: { note?: string }) {
   return (
     <div className="prog prog-skel" aria-hidden>
       <div className="prog-head">
@@ -242,7 +282,7 @@ export function ItinerarySkeleton() {
           </div>
         ))}
       </div>
-      <p className="skel-note mono">Drawing up your circle’s programme…</p>
+      <p className="skel-note mono">{note}</p>
     </div>
   );
 }

@@ -5,8 +5,8 @@
 // fictional; artists, films and books are real titles tagged with hand-picked
 // "vibe" words so the overlap math has something to chew on.
 
-import type { Entity, TargetKind, TasteKind } from "../types";
-import type { InsightResult, TagResult } from "../qloo";
+import type { Entity, EntityKind, TargetKind, TasteKind } from "../types";
+import type { InsightOptions, InsightResult, TagAffinity, TagResult } from "../qloo";
 
 type Vibe =
   | "indie" | "electronic" | "jazz" | "hiphop" | "pop" | "rock" | "folk" | "classical" | "kpop" | "latin" | "rnb" | "ambient"
@@ -31,7 +31,14 @@ const KIND_BIAS: Record<TasteKind, Vibe[]> = {
 };
 
 // Common inputs people type, mapped to hand-picked vibes.
-const KNOWN: Record<string, { kind: TasteKind; name: string; vibes: Vibe[]; subtitle?: string }> = {
+const KNOWN: Record<string, { kind: TasteKind; name: string; vibes: Vibe[]; subtitle?: string; as?: EntityKind }> = {
+  // tv & podcasts (searched from the Film & TV / Books & podcasts rows)
+  "breaking bad": { kind: "movie", as: "tv_show", name: "Breaking Bad", subtitle: "2008 · Series", vibes: ["thriller", "drama", "cerebral"] },
+  "the bear": { kind: "movie", as: "tv_show", name: "The Bear", subtitle: "2022 · Series", vibes: ["drama", "fine-dining", "energetic", "comedy"] },
+  "fleabag": { kind: "movie", as: "tv_show", name: "Fleabag", subtitle: "2016 · Series", vibes: ["comedy", "quirky", "melancholy"] },
+  "the office": { kind: "movie", as: "tv_show", name: "The Office", subtitle: "2005 · Series", vibes: ["comedy", "quirky", "cozy"] },
+  "serial": { kind: "book", as: "podcast", name: "Serial", subtitle: "Podcast", vibes: ["thriller", "cerebral", "literary"] },
+  "song exploder": { kind: "book", as: "podcast", name: "Song Exploder", subtitle: "Podcast", vibes: ["indie", "cerebral", "literary"] },
   // artists
   "radiohead": { kind: "artist", name: "Radiohead", vibes: ["indie", "rock", "melancholy", "cerebral", "electronic"] },
   "taylor swift": { kind: "artist", name: "Taylor Swift", vibes: ["pop", "romance", "nostalgic", "folk"] },
@@ -83,6 +90,9 @@ interface MockItem extends Entity {
   vibes: Vibe[];
   role?: "restaurant" | "activity";
 }
+
+const ACTIVITY_TAG = /category:place:(bar|cocktail_bar|wine_bar|pub|live_music_venue|jazz_club|karaoke|comedy_club|night_club|bowling_alley|movie_theater|lounge|brewery)|mock:tag:place:activity/;
+const RESTAURANT_TAG = /category:place:restaurant|mock:tag:place:restaurant/;
 
 // Recommendation targets. Venue names are invented.
 const PLACES: MockItem[] = [
@@ -142,7 +152,7 @@ const ARTISTS: MockItem[] = [
   { id: "mock-r-16", kind: "artist", name: "Fleetwood Mac", subtitle: "Classic rock", vibes: ["rock", "retro", "nostalgic", "romance"] },
 ];
 
-const TARGETS: Record<TargetKind, MockItem[]> = { place: PLACES, movie: MOVIES, artist: ARTISTS };
+const TARGETS: Record<Exclude<TargetKind, "tv_show">, MockItem[]> = { place: PLACES, movie: MOVIES, artist: ARTISTS };
 
 // Registry of resolved inputs so insights() can read their vibes back.
 const resolved = new Map<string, MockItem>();
@@ -175,9 +185,10 @@ export function resolve(query: string, kind: TasteKind): Entity | null {
   if (!q) return null;
   const key = q.toLowerCase();
   const known = KNOWN[key] ?? (kind === "book" ? KNOWN[`${key} book`] : undefined);
+  const base: EntityKind = kind;
   const item: MockItem = known && known.kind === kind
-    ? { id: `mock-in-${slug(known.name)}-${kind}`, kind, name: known.name, subtitle: known.subtitle, vibes: known.vibes }
-    : { id: `mock-in-${slug(q)}-${kind}`, kind, name: titleCase(q), vibes: vibesFromText(q, kind) };
+    ? { id: `mock-in-${slug(known.name)}-${kind}`, kind: known.as ?? base, name: known.name, subtitle: known.subtitle, vibes: known.vibes }
+    : { id: `mock-in-${slug(q)}-${kind}`, kind: base, name: titleCase(q), vibes: vibesFromText(q, kind) };
   resolved.set(item.id, item);
   return strip(item);
 }
@@ -188,35 +199,78 @@ function titleCase(s: string) {
 
 function strip(item: MockItem): Entity {
   const { vibes, role, ...e } = item;
-  void role;
-  return { ...e, tags: vibes.slice(0, 4).map((v) => v.replace("-", " ")) };
+  const tags = vibes.slice(0, 4).map((v) => v.replace("-", " "));
+  if (item.kind !== "place") return { ...e, tags };
+  const noise = vibes.includes("lively") || vibes.includes("energetic") ? "Loud" : vibes.includes("cozy") || vibes.includes("chill") ? "Quiet" : "Moderate";
+  const dietary = vibes.includes("vegan") ? ["Vegan", "Vegetarian"] : /italian|asian|mexican/.test(vibes.join(" ")) ? ["Vegetarian"] : [];
+  return {
+    ...e,
+    tags,
+    facets: { categories: [e.subtitle ?? (role === "activity" ? "Bar" : "Restaurant"), role === "activity" ? "Bar" : "Restaurant"], noise, dietary, vibe: tags.slice(0, 2) },
+  };
 }
+
+export function searchPlace(name: string, city: string): Entity | null {
+  // The mock catalog only knows its own (fictional) venues; a name a plain LLM invents won't be found.
+  const hit = PLACES.find((p) => p.name.toLowerCase() === name.trim().toLowerCase());
+  if (!hit) return null;
+  const e = strip(hit);
+  e.address = `Sample venue · ${city}`;
+  return e;
+}
+
+const vibesOf = (ids: string[]) => ids.map((id) => resolved.get(id)).filter(Boolean).flatMap((m) => (m as MockItem).vibes);
+
+export function tasteTags(ids: string[], take = 12): TagAffinity[] {
+  const counts = new Map<string, number>();
+  for (const v of vibesOf(ids)) counts.set(v, (counts.get(v) ?? 0) + 1);
+  const max = Math.max(1, ...counts.values());
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, take)
+    .map(([v, n]) => ({ id: `mock:tag:${v}`, name: v.replace("-", " "), subtype: "urn:tag:keyword:media", score: Number((0.6 + 0.4 * (n / max)).toFixed(3)) }));
+}
+
+export function compare(a: string[], b: string[], take = 12): TagAffinity[] {
+  const va = new Set(vibesOf(a));
+  const vb = vibesOf(b);
+  const shared = [...new Set(vb.filter((v) => va.has(v)))];
+  // when two tastes share nothing, fall back to the closest neighbours in the vibe list (still hand-made data)
+  const out = shared.length ? shared : [...va].slice(0, 2);
+  return out.slice(0, take).map((v, i) => ({ id: `mock:tag:${v}`, name: v.replace("-", " "), subtype: "urn:tag:keyword:media", score: Number((0.9 - i * 0.05).toFixed(3)) }));
+}
+
+// Mirrors the shape of Qloo /v2/tags ids so slot specs work identically in both modes.
+const MOCK_TAGS: [RegExp, TagResult][] = [
+  [/restaurant|dinner|food|eat/, { id: "urn:tag:category:place:restaurant", name: "Restaurant", type: "urn:tag:category:place" }],
+  [/karaoke/, { id: "urn:tag:category:place:karaoke", name: "Karaoke", type: "urn:tag:category:place" }],
+  [/jazz/, { id: "urn:tag:category:place:jazz_club", name: "Jazz club", type: "urn:tag:category:place" }],
+  [/comedy/, { id: "urn:tag:category:place:comedy_club", name: "Comedy club", type: "urn:tag:category:place" }],
+  [/live music|venue|gig|concert/, { id: "urn:tag:category:place:live_music_venue", name: "Live music venue", type: "urn:tag:category:place" }],
+  [/cocktail/, { id: "urn:tag:category:place:cocktail_bar", name: "Cocktail bar", type: "urn:tag:category:place" }],
+  [/club|dance|nightlife/, { id: "urn:tag:category:place:night_club", name: "Night club", type: "urn:tag:category:place" }],
+  [/\bbar|pub|drinks/, { id: "urn:tag:category:place:bar", name: "Bar", type: "urn:tag:category:place" }],
+  [/vegetarian/, { id: "urn:tag:dietary_option:qloo:vegetarian", name: "Vegetarian", type: "urn:tag:dietary_option:qloo" }],
+  [/vegan/, { id: "urn:tag:dietary_option:qloo:vegan", name: "Vegan", type: "urn:tag:dietary_option:qloo" }],
+  [/quiet/, { id: "urn:tag:noise_level:qloo:quiet", name: "Quiet", type: "urn:tag:noise_level:qloo" }],
+  [/loud/, { id: "urn:tag:noise_level:qloo:loud", name: "Loud", type: "urn:tag:noise_level:qloo" }],
+];
 
 export function findTags(query: string): TagResult[] {
   const q = query.toLowerCase();
-  const out: TagResult[] = [];
-  if (/(restaurant|dinner|food|eat)/.test(q)) out.push({ id: "mock:tag:place:restaurant", name: "Restaurant", type: "urn:tag:category:place" });
-  if (/(bar|venue|music|club|activity|nightlife|entertainment|cinema|gallery)/.test(q))
-    out.push({ id: "mock:tag:place:activity", name: "Nightlife & entertainment", type: "urn:tag:category:place" });
-  return out;
+  return MOCK_TAGS.filter(([re]) => re.test(q)).map(([, t]) => t);
 }
 
-export function insights(opts: {
-  type: TargetKind;
-  entityIds: string[];
-  city?: string;
-  tagIds?: string[];
-  excludeIds?: string[];
-  resultIds?: string[];
-  take?: number;
-}): InsightResult[] {
+export function insights(opts: InsightOptions): InsightResult[] {
   const signals = opts.entityIds.map((id) => resolved.get(id)).filter(Boolean) as MockItem[];
-  let pool = TARGETS[opts.type];
+  let pool = TARGETS[opts.type === "tv_show" ? "movie" : opts.type];
   if (opts.type === "place" && opts.tagIds?.length) {
-    const wantRestaurant = opts.tagIds.includes("mock:tag:place:restaurant");
-    const wantActivity = opts.tagIds.includes("mock:tag:place:activity");
-    pool = pool.filter((p) => (wantRestaurant && p.role === "restaurant") || (wantActivity && p.role === "activity"));
+    const wantRestaurant = opts.tagIds.some((t) => RESTAURANT_TAG.test(t));
+    const wantActivity = opts.tagIds.some((t) => ACTIVITY_TAG.test(t));
+    if (wantRestaurant || wantActivity) pool = pool.filter((p) => (wantRestaurant && p.role === "restaurant") || (wantActivity && p.role === "activity"));
   }
+  if (opts.type === "place" && opts.priceMax) pool = pool.filter((p) => !p.priceLevel || p.priceLevel <= opts.priceMax!);
+  if (opts.type === "place" && opts.excludeTagIds?.some((t) => /noise_level.*loud/.test(t))) pool = pool.filter((p) => strip(p).facets?.noise !== "Loud");
   if (opts.resultIds?.length) {
     const only = new Set(opts.resultIds);
     pool = pool.filter((p) => only.has(p.id));

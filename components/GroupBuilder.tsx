@@ -5,10 +5,10 @@ import { Avatar, Icon, colorFor } from "./ui";
 
 const KINDS: TasteKind[] = ["artist", "movie", "place", "book"];
 const PLACEHOLDER: Record<TasteKind, string> = {
-  artist: "e.g. Radiohead",
-  movie: "e.g. Spirited Away",
-  place: "e.g. ramen, a favourite bistro",
-  book: "e.g. Norwegian Wood",
+  artist: "Radiohead, Đen Vâu…",
+  movie: "Spirited Away, The Bear…",
+  place: "ramen, a bar you love…",
+  book: "Norwegian Wood, a podcast…",
 };
 
 function ChipInput({ values, onChange, placeholder, label }: { values: string[]; onChange: (v: string[]) => void; placeholder: string; label: string }) {
@@ -48,21 +48,23 @@ function ChipInput({ values, onChange, placeholder, label }: { values: string[];
   );
 }
 
-export function GroupBuilder({ members, onChange }: { members: MemberInput[]; onChange: (m: MemberInput[]) => void }) {
+export function GroupBuilder({ members, onChange, highlight }: { members: MemberInput[]; onChange: (m: MemberInput[]) => void; highlight?: number }) {
   const update = (i: number, patch: Partial<MemberInput>) => onChange(members.map((m, j) => (j === i ? { ...m, ...patch } : m)));
   return (
     <div className="members">
       {members.map((m, i) => {
         const count = Object.values(m.tastes).reduce((n, l) => n + l.length, 0);
         return (
-          <div className="member" key={i} style={{ ["--m" as string]: colorFor(i) }}>
+          <div className={`member ${highlight === i ? "is-you" : ""}`} key={i} style={{ ["--m" as string]: colorFor(i) }}>
+            {highlight === i && <span className="you-tag mono">You</span>}
             <div className="member-head">
               <span className="member-n mono">{String(i + 1).padStart(2, "0")}</span>
               <Avatar name={m.name || `Friend ${i + 1}`} i={i} />
               <input
                 className="member-name"
+                autoFocus={highlight === i}
                 value={m.name}
-                placeholder={`Friend ${i + 1}`}
+                placeholder={highlight === i ? "Your name" : `Friend ${i + 1}`}
                 aria-label={`Name of friend ${i + 1}`}
                 onChange={(e) => update(i, { name: e.target.value })}
               />

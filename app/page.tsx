@@ -1,25 +1,21 @@
 "use client";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { GroupBuilder } from "@/components/GroupBuilder";
 import { AgentTrace } from "@/components/AgentTrace";
 import { Itinerary, ItinerarySkeleton } from "@/components/Itinerary";
+import { TasteMap } from "@/components/TasteMap";
+import { Compare } from "@/components/Compare";
+import { Refine } from "@/components/Refine";
 import { Nav, Footer } from "@/components/Chrome";
-import { planNight } from "@/lib/client";
-import type { AgentEvent, MemberInput, Plan } from "@/lib/types";
+import { Avatar, colorFor } from "@/components/ui";
+import { fetchBaseline, inviteLink, planNight, readInvite, refinePlan } from "@/lib/client";
+import { PRESETS, type Preset } from "@/lib/presets";
+import type { AgentEvent, BaselineResult, MemberInput, Plan, TasteMap as TMap } from "@/lib/types";
 
 const blank = (name = ""): MemberInput => ({ name, tastes: { artist: [], movie: [], place: [], book: [] } });
+const filledOf = (ms: MemberInput[]) => ms.filter((m) => Object.values(m.tastes).some((l) => l.length));
 
-const EXAMPLE: { city: string; vibe: string; members: MemberInput[] } = {
-  city: "Ho Chi Minh City",
-  vibe: "chill Friday, not too pricey",
-  members: [
-    { name: "Gô", tastes: { artist: ["Radiohead", "Đen Vâu"], movie: ["Interstellar"], place: ["ramen"], book: ["Norwegian Wood"] } },
-    { name: "Linh", tastes: { artist: ["Taylor Swift", "Norah Jones"], movie: ["La La Land"], place: ["pizza"], book: ["The Little Prince"] } },
-    { name: "Minh", tastes: { artist: ["Kendrick Lamar", "Daft Punk"], movie: ["Spirited Away"], place: ["tacos"], book: [] } },
-  ],
-};
-
-const TICKER = ["Radiohead", "La La Land", "tacos", "Spirited Away", "Taylor Swift", "ramen", "Norwegian Wood", "Kendrick Lamar", "Interstellar", "pizza", "Đen Vâu", "Daft Punk"];
+const TICKER = ["Radiohead", "The Bear", "tacos", "Spirited Away", "Taylor Swift", "ramen", "Norwegian Wood", "Kendrick Lamar", "Fleabag", "Đen Vâu", "Little Simz", "Lost in Translation"];
 
 function Rings() {
   return (
@@ -27,11 +23,11 @@ function Rings() {
       <svg viewBox="0 0 400 380">
         <g className="ring r1">
           <circle cx="140" cy="140" r="112" />
-          <text x="62" y="96">indie · ramen</text>
+          <text x="62" y="96">sad indie · ramen</text>
         </g>
         <g className="ring r2">
           <circle cx="260" cy="140" r="112" />
-          <text x="268" y="96">pop · pizza</text>
+          <text x="262" y="96">pop · pizza</text>
         </g>
         <g className="ring r3">
           <circle cx="200" cy="244" r="112" />
@@ -41,9 +37,58 @@ function Rings() {
         <circle className="core" cx="200" cy="176" r="7" />
       </svg>
       <figcaption className="mono">
-        <span className="dot" /> the overlap = your night
+        <span className="dot" /> the overlap is your night
       </figcaption>
     </figure>
+  );
+}
+
+function ChatDeadlock() {
+  const lines: [string, number, string][] = [
+    ["Maya", 0, "ok where are we going tonight"],
+    ["Jordan", 1, "anywhere’s fine"],
+    ["Priya", 2, "not another sports bar pls"],
+    ["Jordan", 1, "not sushi again either"],
+    ["Maya", 0, "…I’ll just pick something"],
+  ];
+  return (
+    <div className="chat" aria-label="A typical group chat">
+      <div className="chat-top mono">
+        <span>the group chat</span>
+        <span>Fri 6:41 PM</span>
+      </div>
+      {lines.map(([who, i, text], k) => (
+        <div key={k} className={`bubble ${i === 0 ? "me" : ""}`} style={{ ["--m" as string]: colorFor(i), animationDelay: `${k * 0.18}s` }}>
+          {i !== 0 && <span className="bubble-who">{who}</span>}
+          {text}
+        </div>
+      ))}
+      <div className="bubble tc" style={{ animationDelay: "1.1s" }}>
+        <span className="bubble-who mono">TasteCircle</span>
+        Dinner Qloo ties to all three of you, then a bar picked as Priya’s bridge. A reason for each of you, inside.
+      </div>
+    </div>
+  );
+}
+
+function PresetPicker({ onPick, active }: { onPick: (p: Preset) => void; active?: string }) {
+  return (
+    <div className="presets">
+      <span className="mono presets-label">Or start from a sample circle</span>
+      <div className="presets-row">
+        {PRESETS.map((p) => (
+          <button key={p.id} type="button" className={`preset ${active === p.id ? "on" : ""}`} onClick={() => onPick(p)}>
+            <span className="preset-city">{p.city}</span>
+            <span className="preset-faces">
+              {p.members.map((m, i) => (
+                <Avatar key={m.name} name={m.name} i={i} />
+              ))}
+            </span>
+            <span className="preset-blurb">{p.blurb}</span>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -51,28 +96,76 @@ export default function Home() {
   const [members, setMembers] = useState<MemberInput[]>([blank(), blank()]);
   const [city, setCity] = useState("");
   const [vibe, setVibe] = useState("");
+  const [preset, setPreset] = useState<string | undefined>();
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [plan, setPlan] = useState<Plan | null>(null);
+  const [prev, setPrev] = useState<Plan | null>(null);
+  const [liveMap, setLiveMap] = useState<TMap | null>(null);
   const [running, setRunning] = useState(false);
+  const [refining, setRefining] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [baseline, setBaseline] = useState<BaselineResult | null>(null);
+  const [baseLoading, setBaseLoading] = useState(false);
+  const [baseError, setBaseError] = useState<string | null>(null);
+  const [invite, setInvite] = useState<{ host?: string; you: number } | null>(null);
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
   const plannerRef = useRef<HTMLDivElement>(null);
 
-  const filled = members.filter((m) => Object.values(m.tastes).some((l) => l.length)).length;
+  const flash = (t: string) => {
+    setToast(t);
+    setTimeout(() => setToast(null), 2200);
+  };
+
+  // Joining from an invite link: the circle so far travels in the URL fragment.
+  useEffect(() => {
+    readInvite(window.location.hash).then((inv) => {
+      if (!inv) return;
+      const ms = [...filledOf(inv.members ?? []).slice(0, 7), blank()];
+      setMembers(ms);
+      setCity(inv.city ?? "");
+      setVibe(inv.vibe ?? "");
+      setInvite({ host: inv.host, you: ms.length - 1 });
+      history.replaceState(null, "", window.location.pathname);
+      setTimeout(() => plannerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 200);
+    });
+  }, []);
+
+  const filled = filledOf(members).length;
   const canPlan = filled >= 2 && city.trim().length > 0 && !running;
+
+  const loadBaseline = useCallback(async (p: Plan) => {
+    setBaseLoading(true);
+    setBaseError(null);
+    try {
+      setBaseline(await fetchBaseline(p));
+    } catch (err) {
+      setBaseError((err as Error).message.slice(0, 120));
+    } finally {
+      setBaseLoading(false);
+    }
+  }, []);
 
   async function go() {
     setError(null);
     setPlan(null);
+    setPrev(null);
+    setLiveMap(null);
+    setBaseline(null);
     setEvents([]);
     setRunning(true);
     setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
     try {
       const p = await planNight(
         { members: members.map((m, i) => ({ ...m, name: m.name.trim() || `Friend ${i + 1}` })), city, vibe: vibe || undefined },
-        (e) => setEvents((prev) => [...prev, e]),
+        (e) => {
+          setEvents((prevE) => [...prevE, e]);
+          if (e.type === "taste_map") setLiveMap(e.map);
+        },
       );
       setPlan(p);
+      loadBaseline(p);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -80,15 +173,64 @@ export default function Home() {
     }
   }
 
-  function loadExample() {
-    setMembers(EXAMPLE.members);
-    setCity(EXAMPLE.city);
-    setVibe(EXAMPLE.vibe);
+  async function refine(message: string) {
+    if (!plan) return;
+    setRefining(true);
+    setRunning(true);
+    setError(null);
+    try {
+      const next = await refinePlan(plan, message, (e) => setEvents((prevE) => [...prevE, e]));
+      setPrev(plan);
+      setPlan(next);
+      if (next.city !== plan.city) {
+        setBaseline(null);
+        loadBaseline(next);
+      }
+    } catch (err) {
+      flash((err as Error).message.slice(0, 90));
+    } finally {
+      setRefining(false);
+      setRunning(false);
+    }
+  }
+
+  function loadPreset(p: Preset) {
+    setMembers(p.members.map((m) => ({ ...m, tastes: { ...m.tastes } })));
+    setCity(p.city);
+    setVibe(p.vibe);
+    setPreset(p.id);
+    setInvite(null);
     setTimeout(() => plannerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 30);
   }
 
-  const hint =
-    filled < 2 ? "Add favourites for at least two people." : !city.trim() ? "Add a city to search venues in." : `${filled} people ready — let’s go.`;
+  async function shareInvite() {
+    const url = await inviteLink({
+      city,
+      vibe: vibe || undefined,
+      host: invite ? invite.host : members[0]?.name || undefined,
+      members: filledOf(members).map((m, i) => ({ ...m, name: m.name.trim() || `Friend ${i + 1}` })),
+    });
+    setInviteUrl(url);
+    try {
+      if (navigator.share && /Mobi/.test(navigator.userAgent)) await navigator.share({ title: "Join our TasteCircle", text: `Add your favourites for ${city || "our night out"}`, url });
+      else {
+        await navigator.clipboard.writeText(url);
+        flash("Invite link copied");
+      }
+    } catch {
+      /* cancelled */
+    }
+  }
+
+  const hint = running
+    ? "The agent is planning…"
+    : filled < 2
+      ? "Two people with at least one favourite each."
+      : !city.trim()
+        ? "Which city are you going out in?"
+        : `${filled} people in · ready when you are`;
+
+  const showResults = running || plan || events.length > 0 || error;
 
   return (
     <main>
@@ -96,8 +238,8 @@ export default function Home() {
 
       <section className="hero wrap">
         <div className="hero-meta mono">
-          <span>An AI agent for group nights out</span>
-          <span className="hide-sm">Powered by Qloo Taste AI</span>
+          <span>Group night-out planner</span>
+          <span className="hide-sm">Taste data by Qloo</span>
         </div>
         <h1 className="hero-title">
           <span className="line">One night out.</span>
@@ -108,29 +250,29 @@ export default function Home() {
         <div className="hero-grid">
           <div className="hero-copy">
             <p className="lede">
-              Everyone drops in a few favourite artists, films, spots and books. The agent finds the dinner, the after-plan and
-              the playlist your whole group actually overlaps on, then tells each friend why it’s for them.
+              Everyone drops in what they love — music, films and shows, books and podcasts, places. TasteCircle finds the dinner, the after-plan and the
+              playlist your whole group overlaps on, and tells each friend why it’s for them.
             </p>
             <div className="hero-cta">
               <button className="btn btn-ink" onClick={() => plannerRef.current?.scrollIntoView({ behavior: "smooth" })}>
-                Start your circle <span className="arr" aria-hidden>→</span>
+                Start a circle <span className="arr" aria-hidden>→</span>
               </button>
-              <button className="btn btn-line" onClick={loadExample}>
-                Try an example group
+              <button className="btn btn-line" onClick={() => loadPreset(PRESETS[0])}>
+                Try a sample circle
               </button>
             </div>
             <dl className="hero-facts">
               <div>
-                <dt className="mono">Signals</dt>
-                <dd>Artists, films, places, books</dd>
+                <dt className="mono">Reads</dt>
+                <dd>Six kinds of taste in one Qloo graph</dd>
               </div>
               <div>
-                <dt className="mono">Scoring</dt>
-                <dd>Harmonic-mean consensus</dd>
+                <dt className="mono">Decides</dt>
+                <dd>An agent with a fairness critic</dd>
               </div>
               <div>
-                <dt className="mono">Output</dt>
-                <dd>A shareable plan, a reason for everyone</dd>
+                <dt className="mono">Proves</dt>
+                <dd>Side by side with a plain chatbot</dd>
               </div>
             </dl>
           </div>
@@ -152,19 +294,49 @@ export default function Home() {
         </div>
       </div>
 
+      <section className="problem wrap">
+        <div className="problem-copy">
+          <span className="mono problem-k">The problem</span>
+          <h2>
+            Every group chat has <em>this</em> thread.
+          </h2>
+          <p>
+            Five people, five tastes, and the plan goes to whoever gives up last. Ask a chatbot and it averages the loudest opinions into somewhere
+            nobody’s excited about.
+          </p>
+          <p>
+            TasteCircle reads each person’s taste through Qloo’s cultural graph, scores every option for <b>every</b> friend, and won’t sign off on a
+            night that leaves someone out.
+          </p>
+        </div>
+        <ChatDeadlock />
+      </section>
+
       <section className="planner wrap" ref={plannerRef} id="plan">
         <div className="sec-head">
           <span className="sec-n mono">01</span>
           <div>
             <h2>Who’s coming?</h2>
-            <p>Two to eight people. A few favourites each is plenty — press Enter after each one.</p>
+            <p>Two to eight people, a few favourites each. Press Enter after each one — or send the link and let everyone add their own.</p>
           </div>
         </div>
+
+        {invite ? (
+          <div className="joined">
+            <span className="mono">You’re invited</span>
+            <p>
+              <b>{invite.host || "A friend"}</b> started a circle{city ? ` for ${city}` : ""}. Add your name and a few favourites in the last card, then send the
+              link back — or plan the night right here.
+            </p>
+          </div>
+        ) : (
+          <PresetPicker onPick={loadPreset} active={preset} />
+        )}
 
         <div className="trip">
           <label className="field">
             <span className="mono">City</span>
-            <input id="city" value={city} placeholder="Ho Chi Minh City, Brooklyn, Lisbon…" onChange={(e) => setCity(e.target.value)} />
+            <input id="city" value={city} placeholder="New York, Tokyo, Saigon…" onChange={(e) => setCity(e.target.value)} />
           </label>
           <label className="field">
             <span className="mono">Vibe · optional</span>
@@ -172,76 +344,142 @@ export default function Home() {
           </label>
         </div>
 
-        <GroupBuilder members={members} onChange={setMembers} />
+        <GroupBuilder members={members} onChange={setMembers} highlight={invite?.you} />
 
         <div className="go-bar">
           <span className={`hint mono ${canPlan ? "ready" : ""}`}>
-            <span className="dot" /> {running ? "The agent is planning…" : hint}
+            <span className="dot" /> {hint}
           </span>
-          <button className="btn btn-signal btn-lg" disabled={!canPlan} onClick={go}>
-            {running ? "Planning…" : "Plan our night"} <span className="arr" aria-hidden>→</span>
-          </button>
+          <div className="go-actions">
+            <button className="btn btn-line" disabled={filled < 1} onClick={shareInvite}>
+              {invite ? "Send it back to the group" : "Invite friends"}
+            </button>
+            <button className="btn btn-signal btn-lg" disabled={!canPlan} onClick={go}>
+              {running && !refining ? "Planning…" : "Plan our night"} <span className="arr" aria-hidden>→</span>
+            </button>
+          </div>
         </div>
-        {error && !running && (
-          <div className="error" role="alert">
-            {error}
+        {inviteUrl && (
+          <div className="invite-sheet">
+            <span className="mono">Invite link · nothing stored, the circle lives in the link</span>
+            <input readOnly value={inviteUrl} onFocus={(e) => e.currentTarget.select()} aria-label="Invite link" />
+            <p>Drop it in the group chat. Each friend adds their favourites and sends the updated link on — whoever’s last hits plan.</p>
           </div>
         )}
       </section>
 
       <div ref={resultsRef} className="anchor" />
-      {(running || plan || events.length > 0) && (
+      {showResults && (
         <section className="results wrap">
           <div className="sec-head">
             <span className="sec-n mono">02</span>
             <div>
-              <h2>{plan ? "Tonight’s programme" : "The agent at work"}</h2>
-              <p>{plan ? "Every pick scored against all of your tastes. Share it with the group." : "Live from the planner: every Qloo call and decision, as it happens."}</p>
+              <h2>{plan ? "Tonight’s programme" : error ? "That didn’t work" : "The agent at work"}</h2>
+              <p>
+                {plan
+                  ? "Every stop scored against each of you. Check the fit bars, ask for changes, then send it to the group."
+                  : error
+                    ? "Nothing was saved — tweak the circle and try again."
+                    : "Live from the planner: every Qloo call, every decision, the critic’s notes."}
+              </p>
             </div>
           </div>
           <div className="results-grid">
             <AgentTrace events={events} running={running} />
-            {plan ? <Itinerary plan={plan} /> : error ? <div className="empty">{error}</div> : <ItinerarySkeleton />}
+            <div className="results-main">
+              {plan ? (
+                <Itinerary plan={plan} previous={prev} footer={<Refine plan={plan} running={refining} onSubmit={refine} />} />
+              ) : error ? (
+                <div className="empty">
+                  <p className="empty-h">The agent couldn’t finish this one.</p>
+                  <p>{error}</p>
+                  <div className="empty-actions">
+                    <button className="btn btn-ink btn-sm" onClick={go} disabled={!canPlan}>
+                      Try again
+                    </button>
+                    <button className="btn btn-line btn-sm" onClick={() => loadPreset(PRESETS[0])}>
+                      Use a sample circle
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {liveMap && <TasteMap map={liveMap} compact />}
+                  <ItinerarySkeleton note={liveMap ? "Fingerprints in. Scoring every option for every friend…" : "Reading everyone’s taste…"} />
+                </>
+              )}
+            </div>
           </div>
+        </section>
+      )}
+
+      {plan?.tasteMap && (
+        <section className="decoded wrap">
+          <div className="sec-head">
+            <span className="sec-n mono">03</span>
+            <div>
+              <h2>Your circle, decoded</h2>
+              <p>What Qloo’s taste analysis says about each of you — and the thin line the plan was built on.</p>
+            </div>
+          </div>
+          <TasteMap map={plan.tasteMap} plan={plan} />
+        </section>
+      )}
+
+      {plan && (
+        <section className="versus wrap">
+          <div className="sec-head">
+            <span className="sec-n mono">04</span>
+            <div>
+              <h2>Why not just ask a chatbot?</h2>
+              <p>We did. Here’s what the same model suggests for the same group with no Qloo data — scored by Qloo, for each of you.</p>
+            </div>
+          </div>
+          <Compare plan={plan} data={baseline} loading={baseLoading} error={baseError} onRetry={() => loadBaseline(plan)} />
         </section>
       )}
 
       <section className="how wrap" id="how">
         <div className="sec-head">
-          <span className="sec-n mono">{plan || running ? "03" : "02"}</span>
+          <span className="sec-n mono">{plan ? "05" : showResults ? "03" : "02"}</span>
           <div>
             <h2>How it works</h2>
-            <p>One taste graph, three moves. No averaging people out.</p>
+            <p>One taste graph, an agent that checks its own work, and no averaging people out.</p>
           </div>
         </div>
         <ol className="how-list">
           <li>
             <span className="how-n">i.</span>
-            <h3>Resolve every taste</h3>
+            <h3>Read every taste</h3>
             <p>
-              Each favourite is matched to a Qloo entity with <code>/search</code> — artists, films, places and books all live in
-              one graph.
+              Favourites resolve to Qloo entities with <code>/search</code> — artists, films, TV, books, podcasts, places. Taste analysis on{" "}
+              <code>/v2/insights</code> fingerprints each friend; <code>/v2/insights/compare</code> finds the bridge between the two furthest apart.
             </p>
           </li>
           <li>
             <span className="how-n">ii.</span>
-            <h3>Score for the whole group</h3>
+            <h3>Score for every friend</h3>
             <p>
-              <code>/v2/insights</code> runs once for the group and once per friend. A harmonic-mean consensus means nobody gets
-              left out to please the majority.
+              <code>/v2/insights</code> runs once for the group and once per friend, with venue-category tags and explainability. A harmonic-mean consensus
+              means one unhappy friend sinks a pick.
             </p>
           </li>
           <li>
             <span className="how-n">iii.</span>
-            <h3>Choose and explain</h3>
+            <h3>Decide, critique, refine</h3>
             <p>
-              An LLM agent weighs consensus against fairness, picks dinner → activity → playlist, and writes a “why” for every
-              friend from Qloo’s explainability.
+              A tool-calling agent picks the night, runs bridge searches when someone’s left out, and a critic rejects drafts that ignore them. Ask for a
+              change and it goes back to Qloo — never to its imagination.
             </p>
           </li>
         </ol>
       </section>
       <Footer />
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+        </div>
+      )}
     </main>
   );
 }
