@@ -37,7 +37,7 @@ import {
 import { chat, llmConfig, parseArgs, type ChatMessage, type LlmConfig, type ToolDef } from "./llm";
 import { ACTIVITY_WORDS, SLOT_SPECS } from "./slots";
 import { buildTasteMap, tasteMapBrief } from "./tasteMap";
-import { polishCopy } from "./writer";
+import { hasBanned, polishCopy } from "./writer";
 
 const env = (k: string): string | undefined =>
   typeof process !== "undefined" && process.env ? process.env[k] : undefined;
@@ -373,11 +373,11 @@ function finalize(ctx: Ctx, a: FinalArgs): { ok: true } | { error: string } {
   const keepCopy = (slot: Slot, arg: StopArg | undefined, c: Candidate) => {
     const old = base?.stops.find((s) => s.slot === slot);
     if (arg?.ref === "keep" && old) return old; // unchanged stop keeps its copy
-    return stopFrom(slot, c, arg?.blurb || pitch(c), arg?.why ?? {}, members);
+    return stopFrom(slot, c, (!hasBanned(arg?.blurb) && arg?.blurb) || pitch(c), cleanWhy(arg?.why), members);
   };
   const stops = [keepCopy("dinner", a.dinner, dinner), keepCopy("activity", a.activity, activity)];
   if (keepPlaylist) stops.push(keepPlaylist);
-  else if (artists.length) stops.push(playlistStop(artists, a.playlist?.blurb, a.playlist?.why, members));
+  else if (artists.length) stops.push(playlistStop(artists, hasBanned(a.playlist?.blurb) ? undefined : a.playlist?.blurb, cleanWhy(a.playlist?.why), members));
   if (film) stops.push(keepCopy("film", a.film, film));
 
   for (const s of stops)
@@ -421,6 +421,11 @@ function ensureEveryoneHasOne(chosen: Candidate[], pool: Candidate[], members: s
     }
   }
   return out;
+}
+
+/** Drop draft reasons that use banned words; the grounded default line replaces them. */
+function cleanWhy(why: Record<string, string> | undefined): Record<string, string> {
+  return Object.fromEntries(Object.entries(why ?? {}).filter(([, v]) => !hasBanned(v)));
 }
 
 function playlistStop(artists: Candidate[], blurb: string | undefined, why: Record<string, string> | undefined, members: string[]) {
