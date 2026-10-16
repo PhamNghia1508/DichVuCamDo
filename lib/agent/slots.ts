@@ -57,7 +57,7 @@ const NEVER =
   /casino|scenic|observation|tourist attraction|museum|\bpark$|^garden$|botanical|zoo|aquarium|stadium|arena|wedding|funeral|banquet|department store|clothing|shoe|supermarket|grocery|shopping mall|\bmall\b|furniture|home goods|motel|apartment|bank|office|school|university|hospital|clinic|dentist|gym|fitness|salon|\bspa\b|barber|pharmacy|church|temple|pagoda|real estate|agency|parking|gas station|adult|tour operator|travel|pet |veterinar|car |laundry|airport|station|consulate|embassy/i;
 
 /** Validate a place for a slot from its Qloo category tags. Returns a reason when rejected. */
-const NOT_A_NIGHT_OUT_NAME = /universit|college|school|campus|hospital|clinic|airport|headquarters|office|ministry|embassy|cafeteria|canteen|food hall of|lobby|dormitor|student/i;
+const NOT_A_NIGHT_OUT_NAME = /universit|college|school|campus|hospital|clinic|airport|headquarters|office|ministry|embassy|cafeteria|canteen|food hall of|lobby|dormitor|student|\b(?:national|british|public|state|central|city|county|university) library\b|\bmuseum\b/i;
 const STREET_FOOD = /night market|food court|street food|food stall|hawker|food market/i;
 
 export function placeCheck(slot: Slot, e: Entity): string | null {
