@@ -13,9 +13,12 @@ export default function SharedPlan() {
   return (
     <main>
       <Nav />
-      <div className="wrap" style={{ paddingBottom: 56, maxWidth: 860 }}>
+      <div className="wrap shared">
         {plan === undefined ? null : plan ? (
-          <Itinerary plan={plan} shared />
+          <>
+            <p className="shared-kicker mono">A plan for your circle · made with TasteCircle</p>
+            <Itinerary plan={plan} shared />
+          </>
         ) : (
           <div className="empty">
             This share link looks incomplete. <a href={`${BASE_PATH}/`}>Plan a new night →</a>

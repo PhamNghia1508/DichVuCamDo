@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
 
-export const MEMBER_COLORS = ["#ff5b3a", "#6b5cff", "#0fa39a", "#f2a516", "#e8488a", "#2f7bf5", "#7a8f2b", "#a0522d"];
+// Restrained, high-contrast member inks (white text passes WCAG AA on each).
+export const MEMBER_COLORS = ["#e2401b", "#2c45e6", "#1f6f45", "#7a35c9", "#a86a00", "#c22a63", "#0b6f78", "#7d4f22"];
 export const colorFor = (i: number) => MEMBER_COLORS[i % MEMBER_COLORS.length];
 
 export function Avatar({ name, i, title }: { name: string; i: number; title?: string }) {
   const initials = name.trim().split(/\s+/).map((p) => p[0]).join("").slice(0, 2).toUpperCase() || "?";
   return (
-    <span className="avatar" style={{ background: colorFor(i) }} title={title ?? name} aria-hidden>
+    <span className="avatar" style={{ ["--m" as string]: colorFor(i) }} title={title ?? name} aria-hidden>
       {initials}
     </span>
   );

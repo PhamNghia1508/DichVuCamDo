@@ -1,44 +1,55 @@
 import { IS_STATIC_DEMO, BASE_PATH } from "@/lib/client";
 
-export const REPO_URL = "https://github.com/PhamNghia1508/tastecircle";
+export const REPO_URL = "https://github.com/PhamNghia1508/DichVuCamDo";
 
 export function Nav() {
   return (
     <>
       {IS_STATIC_DEMO && (
         <div className="banner">
-          Static demo running on hand-written sample data in your browser. Live Qloo + LLM version: see the{" "}
-          <a href={REPO_URL}>README</a>.
+          <span className="mono">Static demo</span> — runs on hand-written sample data in your browser. The live Qloo + LLM version is
+          linked in the <a href={REPO_URL}>README</a>.
         </div>
       )}
-      <div className="wrap">
-        <nav className="nav">
-          <a className="brand" href={`${BASE_PATH}/`}>
-            <span className="brand-mark">
-              <span />
-              <span />
-            </span>
-            TasteCircle
+      <header className="nav wrap">
+        <a className="brand" href={`${BASE_PATH}/`} aria-label="TasteCircle home">
+          <svg className="brand-mark" viewBox="0 0 40 28" aria-hidden>
+            <circle cx="12" cy="14" r="10.5" />
+            <circle cx="28" cy="14" r="10.5" />
+            <path d="M20 6.6a10.5 10.5 0 0 1 0 14.8a10.5 10.5 0 0 1 0-14.8Z" className="lens" />
+          </svg>
+          <span>
+            Taste<em>Circle</em>
+          </span>
+        </a>
+        <nav className="nav-links" aria-label="Main">
+          <a className="hide-sm" href={`${BASE_PATH}/#how`}>How it works</a>
+          <a className="hide-sm" href={`${BASE_PATH}/#plan`}>Plan a night</a>
+          <a className="nav-gh" href={REPO_URL} target="_blank" rel="noreferrer">
+            GitHub <span aria-hidden>↗</span>
           </a>
-          <div className="nav-links">
-            <a className="hide-sm" href={`${BASE_PATH}/#how`}>How it works</a>
-            <a href={REPO_URL} target="_blank" rel="noreferrer">GitHub ↗</a>
-          </div>
         </nav>
-      </div>
+      </header>
     </>
   );
 }
 
 export function Footer() {
   return (
-    <div className="wrap">
-      <footer>
-        <span>TasteCircle · built for the Qloo Agentic Hackathon · MIT licensed</span>
+    <footer className="foot wrap">
+      <div className="foot-big" aria-hidden>
+        Taste<em>Circle</em>
+      </div>
+      <div className="foot-row">
+        <span>Built for the Qloo Agentic Hackathon · MIT licensed</span>
         <span>
-          Taste data by <a href="https://www.qloo.com" target="_blank" rel="noreferrer">Qloo</a>
+          Taste data by{" "}
+          <a href="https://www.qloo.com" target="_blank" rel="noreferrer">
+            Qloo
+          </a>{" "}
+          · <a href={REPO_URL} target="_blank" rel="noreferrer">Source</a>
         </span>
-      </footer>
-    </div>
+      </div>
+    </footer>
   );
 }

@@ -77,7 +77,7 @@ export function toEntity(raw: any, fallback: TasteKind): Entity {
           .filter(Boolean)
           .join(" · ")
       : kind === "place"
-        ? tags[0]
+        ? (Array.isArray(raw?.tags) ? raw.tags.find((t: any) => String(t?.type ?? t?.id).includes("category:place"))?.name : undefined) ?? tags[0]
         : kind === "book"
           ? p.publication_year
             ? String(p.publication_year)

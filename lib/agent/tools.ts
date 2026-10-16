@@ -14,6 +14,20 @@ export interface ToolContext {
   plan: Plan | null;
   planner: Plan["mode"]["planner"];
   model?: string;
+  /** Tag ids found before/while planning, keyed by query. */
+  tags?: Record<string, string | undefined>;
+  /** group_consensus results per itinerary slot, reused by the fallback planner. */
+  slots: Partial<Record<Slot, Candidate[]>>;
+}
+
+export type Slot = "dinner" | "activity" | "playlist" | "film";
+
+/** Map a group_consensus call to the itinerary slot it serves. */
+export function slotFor(target: string, purpose: string): Slot {
+  if (target === "artist") return "playlist";
+  if (target === "movie") return "film";
+  if (/after|activity|then|bar|venue|night|music|show/i.test(purpose)) return "activity";
+  return /dinner|restaurant|food|eat|meal|lunch/i.test(purpose) ? "dinner" : "activity";
 }
 
 export interface ToolSpec {
@@ -26,16 +40,17 @@ export interface ToolSpec {
 
 const pct = (n: number) => Math.round(n * 100);
 
-function short(c: Candidate) {
+/** Compact candidate for the LLM context (token budget matters on free tiers). */
+export function short(c: Candidate) {
+  const because = Object.fromEntries(Object.entries(c.drivers).map(([k, v]) => [k, v.slice(0, 2)]));
   return {
     id: c.entity.id,
     name: c.entity.name,
-    about: c.entity.subtitle,
-    tags: c.entity.tags?.slice(0, 4),
+    ...(c.entity.subtitle ? { about: c.entity.subtitle } : {}),
     consensus: pct(c.consensus),
     fairness: pct(c.fairness),
     per_member: Object.fromEntries(Object.entries(c.memberAffinity).map(([k, v]) => [k, pct(v)])),
-    because: c.drivers,
+    ...(Object.keys(because).length ? { because } : {}),
   };
 }
 
@@ -57,6 +72,7 @@ export const TOOLS: ToolSpec[] = [
     parameters: { type: "object", properties: {}, additionalProperties: false },
     label: () => "Resolving everyone's favourites with Qloo search",
     async run(ctx) {
+      if (ctx.members) return { summary: "Tastes already resolved", result: resolvedSummary(ctx.members) };
       const members: ResolvedMember[] = [];
       for (const m of ctx.request.members) {
         const jobs: Promise<{ input: string; kind: TasteKind; entity: Entity | null }>[] = [];
@@ -76,10 +92,7 @@ export const TOOLS: ToolSpec[] = [
       const total = members.reduce((n, m) => n + m.tastes.length, 0);
       return {
         summary: `Matched ${found}/${total} favourites across ${members.length} people`,
-        result: members.map((m) => ({
-          member: m.name,
-          tastes: m.tastes.map((t) => ({ kind: t.kind, input: t.input, matched: t.entity?.name ?? null })),
-        })),
+        result: resolvedSummary(members),
       };
     },
   },
@@ -96,7 +109,10 @@ export const TOOLS: ToolSpec[] = [
     label: (a) => `Looking up Qloo tags for “${a.query}”`,
     async run(ctx, args) {
       const tags = await ctx.qloo.findTags(String(args.query ?? ""));
-      return { summary: tags.length ? `Found ${tags.length} tag(s): ${tags.slice(0, 3).map((t) => t.name).join(", ")}` : "No tags found", result: tags.slice(0, 8) };
+      return {
+        summary: tags.length ? `Found ${tags.length} tag(s): ${[...new Set(tags.map((t) => t.name.toLowerCase()))].slice(0, 3).join(", ")}` : "No tags found",
+        result: tags.slice(0, 5).map((t) => ({ id: t.id, name: t.name })),
+      };
     },
   },
   {
@@ -109,7 +125,7 @@ export const TOOLS: ToolSpec[] = [
         target: { type: "string", enum: ["place", "movie", "artist"] },
         purpose: { type: "string", description: "What this search is for, e.g. 'dinner', 'after-dinner activity', 'playlist', 'film'" },
         tag_ids: { type: "array", items: { type: "string" }, description: "Optional Qloo tag ids from find_tags" },
-        top: { type: "integer", minimum: 3, maximum: 10, description: "How many candidates to return (default 6)" },
+        top: { type: "integer", minimum: 3, maximum: 6, description: "How many candidates to return (default 5)" },
       },
       required: ["target", "purpose"],
       additionalProperties: false,
@@ -126,7 +142,9 @@ export const TOOLS: ToolSpec[] = [
       });
       const fresh = list.filter((c) => !ctx.used.has(c.entity.id));
       fresh.forEach((c) => ctx.candidates.set(c.entity.id, c));
-      const top = fresh.slice(0, Number(args.top) || 6);
+      const slot = slotFor(target, String(args.purpose ?? ""));
+      if (fresh.length) ctx.slots[slot] = fresh;
+      const top = fresh.slice(0, Math.min(Number(args.top) || 5, 6));
       return {
         summary: top.length ? `Top ${String(args.purpose)}: ${top[0].entity.name} (${pct(top[0].consensus)}% consensus)` : "No candidates",
         result: top.map(short),
@@ -165,6 +183,13 @@ export const TOOLS: ToolSpec[] = [
     },
   },
 ];
+
+function resolvedSummary(members: ResolvedMember[]) {
+  return members.map((m) => ({
+    member: m.name,
+    likes: m.tastes.filter((t) => t.entity).map((t) => t.entity!.name),
+  }));
+}
 
 export interface StopArgs {
   id: string;

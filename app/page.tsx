@@ -2,7 +2,7 @@
 import { useRef, useState } from "react";
 import { GroupBuilder } from "@/components/GroupBuilder";
 import { AgentTrace } from "@/components/AgentTrace";
-import { Itinerary } from "@/components/Itinerary";
+import { Itinerary, ItinerarySkeleton } from "@/components/Itinerary";
 import { Nav, Footer } from "@/components/Chrome";
 import { planNight } from "@/lib/client";
 import type { AgentEvent, MemberInput, Plan } from "@/lib/types";
@@ -18,6 +18,34 @@ const EXAMPLE: { city: string; vibe: string; members: MemberInput[] } = {
     { name: "Minh", tastes: { artist: ["Kendrick Lamar", "Daft Punk"], movie: ["Spirited Away"], place: ["tacos"], book: [] } },
   ],
 };
+
+const TICKER = ["Radiohead", "La La Land", "tacos", "Spirited Away", "Taylor Swift", "ramen", "Norwegian Wood", "Kendrick Lamar", "Interstellar", "pizza", "Đen Vâu", "Daft Punk"];
+
+function Rings() {
+  return (
+    <figure className="rings" aria-hidden>
+      <svg viewBox="0 0 400 380">
+        <g className="ring r1">
+          <circle cx="140" cy="140" r="112" />
+          <text x="62" y="96">indie · ramen</text>
+        </g>
+        <g className="ring r2">
+          <circle cx="260" cy="140" r="112" />
+          <text x="268" y="96">pop · pizza</text>
+        </g>
+        <g className="ring r3">
+          <circle cx="200" cy="244" r="112" />
+          <text x="160" y="330">rap · tacos</text>
+        </g>
+        <path className="lens" d="M200 112 Q228 160 200 205 Q172 160 200 112 Z" />
+        <circle className="core" cx="200" cy="176" r="7" />
+      </svg>
+      <figcaption className="mono">
+        <span className="dot" /> the overlap = your night
+      </figcaption>
+    </figure>
+  );
+}
 
 export default function Home() {
   const [members, setMembers] = useState<MemberInput[]>([blank(), blank()]);
@@ -59,106 +87,160 @@ export default function Home() {
     setTimeout(() => plannerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 30);
   }
 
+  const hint =
+    filled < 2 ? "Add favourites for at least two people." : !city.trim() ? "Add a city to search venues in." : `${filled} people ready — let’s go.`;
+
   return (
     <main>
       <Nav />
-      <div className="wrap">
-        <section className="hero">
-          <div>
-            <span className="eyebrow">AI agent · powered by Qloo Taste AI</span>
-            <h1>
-              One night out.
-              <br />
-              <em>Everyone’s</em> taste.
-            </h1>
+
+      <section className="hero wrap">
+        <div className="hero-meta mono">
+          <span>An AI agent for group nights out</span>
+          <span className="hide-sm">Powered by Qloo Taste AI</span>
+        </div>
+        <h1 className="hero-title">
+          <span className="line">One night out.</span>
+          <span className="line">
+            <em>Everyone’s</em> taste.
+          </span>
+        </h1>
+        <div className="hero-grid">
+          <div className="hero-copy">
             <p className="lede">
-              Everyone drops in a few favourite artists, films, spots and books. TasteCircle’s agent finds the dinner, the
-              after-plan and the playlist your whole group actually overlaps on — and tells each friend why it’s for them.
+              Everyone drops in a few favourite artists, films, spots and books. The agent finds the dinner, the after-plan and
+              the playlist your whole group actually overlaps on, then tells each friend why it’s for them.
             </p>
             <div className="hero-cta">
-              <button className="btn btn-primary" onClick={() => plannerRef.current?.scrollIntoView({ behavior: "smooth" })}>
-                Start your circle
+              <button className="btn btn-ink" onClick={() => plannerRef.current?.scrollIntoView({ behavior: "smooth" })}>
+                Start your circle <span className="arr" aria-hidden>→</span>
               </button>
-              <button className="btn btn-ghost" onClick={loadExample}>
+              <button className="btn btn-line" onClick={loadExample}>
                 Try an example group
               </button>
             </div>
+            <dl className="hero-facts">
+              <div>
+                <dt className="mono">Signals</dt>
+                <dd>Artists, films, places, books</dd>
+              </div>
+              <div>
+                <dt className="mono">Scoring</dt>
+                <dd>Harmonic-mean consensus</dd>
+              </div>
+              <div>
+                <dt className="mono">Output</dt>
+                <dd>A shareable plan, a reason for everyone</dd>
+              </div>
+            </dl>
           </div>
-          <div className="venn" aria-hidden>
-            <div className="c c1">indie · ramen</div>
-            <div className="c c2">jazz · rom-com</div>
-            <div className="c c3">hip-hop · tacos</div>
-            <div className="core">your night out</div>
-          </div>
-        </section>
+          <Rings />
+        </div>
+      </section>
 
-        <section className="planner" ref={plannerRef} id="plan">
-          <h2 className="section-title">Who’s coming?</h2>
-          <p className="section-sub">Two to eight people. A few favourites each is plenty — press Enter after each one.</p>
-          <div className="trip-bar">
-            <div className="field">
-              <label htmlFor="city">City</label>
-              <input id="city" value={city} placeholder="e.g. Ho Chi Minh City, Brooklyn, Lisbon" onChange={(e) => setCity(e.target.value)} />
-            </div>
-            <div className="field">
-              <label htmlFor="vibe">Vibe (optional)</label>
-              <input id="vibe" value={vibe} placeholder="e.g. birthday, low-key, cheap eats" onChange={(e) => setVibe(e.target.value)} />
-            </div>
-            <button className="btn btn-accent" disabled={!canPlan} onClick={go}>
-              {running ? "Planning…" : "Plan our night →"}
-            </button>
-          </div>
-          <GroupBuilder members={members} onChange={setMembers} />
-          <div className="plan-row">
-            <span className="hint">
-              {filled < 2 ? "Add favourites for at least two people." : !city.trim() ? "Add a city to search venues in." : `${filled} people ready.`}
+      <div className="ticker" aria-hidden>
+        <div className="ticker-track">
+          {[0, 1].map((k) => (
+            <span key={k}>
+              {TICKER.map((t) => (
+                <span key={t + k}>
+                  {t} <i>×</i>{" "}
+                </span>
+              ))}
             </span>
-            <button className="btn btn-primary" disabled={!canPlan} onClick={go}>
-              {running ? "Planning…" : "Plan our night"}
-            </button>
-          </div>
-          {error && !running && <div className="error">{error}</div>}
-        </section>
-
-        <div ref={resultsRef} />
-        {(running || plan || events.length > 0) && (
-          <section className="results">
-            <AgentTrace events={events} running={running} />
-            {plan ? (
-              <Itinerary plan={plan} />
-            ) : (
-              <div className="empty">{error ? error : "Your circle’s itinerary is being drawn up…"}</div>
-            )}
-          </section>
-        )}
-
-        <section className="how" id="how">
-          <div className="how-card">
-            <div className="n">01</div>
-            <h4>Resolve every taste</h4>
-            <p>
-              Each favourite is matched to a Qloo entity with <code className="k">/search</code> — artists, films, places
-              and books all live in one taste graph.
-            </p>
-          </div>
-          <div className="how-card">
-            <div className="n">02</div>
-            <h4>Score for the whole group</h4>
-            <p>
-              <code className="k">/v2/insights</code> runs once for the group and once per friend. A harmonic-mean consensus
-              score means nobody gets left out to please the majority.
-            </p>
-          </div>
-          <div className="how-card">
-            <div className="n">03</div>
-            <h4>Plan and explain</h4>
-            <p>
-              An LLM agent picks dinner → activity → playlist with tool calls, then writes a one-line “why” for every friend
-              using Qloo’s explainability.
-            </p>
-          </div>
-        </section>
+          ))}
+        </div>
       </div>
+
+      <section className="planner wrap" ref={plannerRef} id="plan">
+        <div className="sec-head">
+          <span className="sec-n mono">01</span>
+          <div>
+            <h2>Who’s coming?</h2>
+            <p>Two to eight people. A few favourites each is plenty — press Enter after each one.</p>
+          </div>
+        </div>
+
+        <div className="trip">
+          <label className="field">
+            <span className="mono">City</span>
+            <input id="city" value={city} placeholder="Ho Chi Minh City, Brooklyn, Lisbon…" onChange={(e) => setCity(e.target.value)} />
+          </label>
+          <label className="field">
+            <span className="mono">Vibe · optional</span>
+            <input id="vibe" value={vibe} placeholder="birthday, low-key, cheap eats…" onChange={(e) => setVibe(e.target.value)} />
+          </label>
+        </div>
+
+        <GroupBuilder members={members} onChange={setMembers} />
+
+        <div className="go-bar">
+          <span className={`hint mono ${canPlan ? "ready" : ""}`}>
+            <span className="dot" /> {running ? "The agent is planning…" : hint}
+          </span>
+          <button className="btn btn-signal btn-lg" disabled={!canPlan} onClick={go}>
+            {running ? "Planning…" : "Plan our night"} <span className="arr" aria-hidden>→</span>
+          </button>
+        </div>
+        {error && !running && (
+          <div className="error" role="alert">
+            {error}
+          </div>
+        )}
+      </section>
+
+      <div ref={resultsRef} className="anchor" />
+      {(running || plan || events.length > 0) && (
+        <section className="results wrap">
+          <div className="sec-head">
+            <span className="sec-n mono">02</span>
+            <div>
+              <h2>{plan ? "Tonight’s programme" : "The agent at work"}</h2>
+              <p>{plan ? "Every pick scored against all of your tastes. Share it with the group." : "Live from the planner: every Qloo call and decision, as it happens."}</p>
+            </div>
+          </div>
+          <div className="results-grid">
+            <AgentTrace events={events} running={running} />
+            {plan ? <Itinerary plan={plan} /> : error ? <div className="empty">{error}</div> : <ItinerarySkeleton />}
+          </div>
+        </section>
+      )}
+
+      <section className="how wrap" id="how">
+        <div className="sec-head">
+          <span className="sec-n mono">{plan || running ? "03" : "02"}</span>
+          <div>
+            <h2>How it works</h2>
+            <p>One taste graph, three moves. No averaging people out.</p>
+          </div>
+        </div>
+        <ol className="how-list">
+          <li>
+            <span className="how-n">i.</span>
+            <h3>Resolve every taste</h3>
+            <p>
+              Each favourite is matched to a Qloo entity with <code>/search</code> — artists, films, places and books all live in
+              one graph.
+            </p>
+          </li>
+          <li>
+            <span className="how-n">ii.</span>
+            <h3>Score for the whole group</h3>
+            <p>
+              <code>/v2/insights</code> runs once for the group and once per friend. A harmonic-mean consensus means nobody gets
+              left out to please the majority.
+            </p>
+          </li>
+          <li>
+            <span className="how-n">iii.</span>
+            <h3>Choose and explain</h3>
+            <p>
+              An LLM agent weighs consensus against fairness, picks dinner → activity → playlist, and writes a “why” for every
+              friend from Qloo’s explainability.
+            </p>
+          </li>
+        </ol>
+      </section>
       <Footer />
     </main>
   );

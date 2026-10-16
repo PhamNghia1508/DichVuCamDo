@@ -38,7 +38,7 @@ export async function groupConsensus(
   target: TargetKind,
   opts: ConsensusOptions = {},
 ): Promise<Candidate[]> {
-  const take = opts.take ?? 25;
+  const take = opts.take ?? 16;
   const idsFor = (m: ResolvedMember) => m.tastes.map((t) => t.entity?.id).filter(Boolean) as string[];
   const active = members.filter((m) => idsFor(m).length > 0);
   if (!active.length) return [];
