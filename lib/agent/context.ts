@@ -200,7 +200,8 @@ export function stopFrom(slot: Slot, c: Candidate, blurb: string, why: Record<st
     time: SLOT_TIME[slot],
     entity: slim(c.entity),
     blurb,
-    whyByMember: Object.fromEntries(members.map((m) => [m, why[m]?.trim() || defaultWhy(m, c)])),
+    // fragments ("The cinematic feel of Drive.") fall back to the grounded template
+    whyByMember: Object.fromEntries(members.map((m) => [m, (why[m]?.trim().split(/\s+/).length ?? 0) >= 7 ? why[m].trim() : defaultWhy(m, c)])),
     consensus: c.consensus,
     fairness: c.fairness,
     memberScores: c.memberAffinity,

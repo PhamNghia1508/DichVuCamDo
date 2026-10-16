@@ -120,7 +120,7 @@ export default function Home() {
 
   // Joining from an invite link: the circle so far travels in the URL fragment.
   useEffect(() => {
-    readInvite(window.location.hash).then((inv) => {
+    const load = () => readInvite(window.location.hash).then((inv) => {
       if (!inv) return;
       const ms = [...filledOf(inv.members ?? []).slice(0, 7), blank()];
       setMembers(ms);
@@ -130,6 +130,9 @@ export default function Home() {
       history.replaceState(null, "", window.location.pathname);
       setTimeout(() => plannerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 200);
     });
+    load();
+    window.addEventListener("hashchange", load);
+    return () => window.removeEventListener("hashchange", load);
   }, []);
 
   const filled = filledOf(members).length;

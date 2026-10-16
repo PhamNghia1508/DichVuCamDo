@@ -22,6 +22,15 @@ const STYLE = [
   "title: 3–6 words, specific and a little witty, no colon, no city name unless it's the joke. summary: two short sentences naming the trade-off the plan made (who gave a little, who got their pick).",
 ].join(" ");
 
+/** Words the copy pass must never ship. The prompt asks; this enforces. */
+export const BANNED_RE = /\b(vibes?|vibey|energy|resonates?|resonating|perfect(?:ly)?|atmosphere|journey|curated|elevated?|elevates|delight(?:ful|s)?|seamless(?:ly)?)\b/i;
+export const hasBanned = (t?: string): boolean => !!t && BANNED_RE.test(t);
+const bannedHits = (texts: (string | undefined)[]): string[] =>
+  [...new Set(texts.flatMap((t) => (t ? [...t.matchAll(new RegExp(BANNED_RE.source, "gi"))].map((m) => m[0].toLowerCase()) : [])))];
+
+type CopyOut = { title?: string; summary?: string; stops?: Record<string, { blurb?: string; why?: Record<string, string> }> };
+const copyTexts = (d: CopyOut): (string | undefined)[] => [d.title, d.summary, ...Object.values(d.stops ?? {}).flatMap((s) => [s.blurb, ...Object.values(s.why ?? {})])];
+
 export async function polishCopy(ctx: Ctx, plan: Plan, slots: Slot[]): Promise<Plan> {
   const cfg = llmConfig();
   if (!cfg || !slots.length) return plan;
@@ -54,24 +63,38 @@ export async function polishCopy(ctx: Ctx, plan: Plan, slots: Slot[]): Promise<P
   };
   try {
     const out = await step(ctx, "write_copy", `Writing a reason for each of you`, async () => {
-      const msg = await chat(
-        cfg,
+      const baseMessages = [
+        { role: "system" as const, content: STYLE },
         {
-          model,
-          messages: [
-            { role: "system", content: STYLE },
-            {
-              role: "user",
-              content: `City: ${plan.city}.${plan.vibe ? ` Vibe: ${plan.vibe}.` : ""} Friends' taste fingerprints (Qloo): ${JSON.stringify(fp)}\nDraft title: ${plan.title}\nStops: ${JSON.stringify(facts)}`,
-            },
-          ],
-          response_format: { type: "json_schema", json_schema: { name: "copy", strict: true, schema } },
-          max_tokens: 1400,
-          temperature: 0.8,
+          role: "user" as const,
+          content: `City: ${plan.city}.${plan.vibe ? ` Vibe: ${plan.vibe}.` : ""} Friends' taste fingerprints (Qloo): ${JSON.stringify(fp)}\nDraft title: ${plan.title}\nStops: ${JSON.stringify(facts)}`,
         },
-        Date.now() + 14_000,
-      );
-      const data = JSON.parse(String(msg.content ?? "{}")) as { title?: string; summary?: string; stops?: Record<string, { blurb?: string; why?: Record<string, string> }> };
+      ];
+      const ask = async (extra?: string): Promise<CopyOut> => {
+        const msg = await chat(
+          cfg,
+          {
+            model,
+            messages: extra ? [...baseMessages, { role: "user" as const, content: extra }] : baseMessages,
+            response_format: { type: "json_schema", json_schema: { name: "copy", strict: true, schema } },
+            max_tokens: 1400,
+            temperature: extra ? 0.6 : 0.8,
+          },
+          Date.now() + 14_000,
+        );
+        return JSON.parse(String(msg.content ?? "{}")) as CopyOut;
+      };
+      let data = await ask();
+      // Post-filter: if banned words slipped through, retry once with the offenders named.
+      const hits = bannedHits(copyTexts(data));
+      if (hits.length) {
+        try {
+          const again = await ask(`Rewrite. Your draft used banned words: ${hits.join(", ")}. Same JSON, none of those words (or their forms) anywhere.`);
+          if (bannedHits(copyTexts(again)).length < hits.length) data = again;
+        } catch {
+          /* keep first attempt; field filter below still applies */
+        }
+      }
       let kept = 0;
       let total = 0;
       const stops = plan.stops.map((s) => {
@@ -83,15 +106,15 @@ export async function polishCopy(ctx: Ctx, plan: Plan, slots: Slot[]): Promise<P
           const credited = (s.drivers?.[m] ?? []).map((d) => d.name.toLowerCase());
           total++;
           // grounded or honest: must name a credited favourite, unless none were credited
-          if (line && (credited.length === 0 || credited.some((c) => line.toLowerCase().includes(c.toLowerCase())))) {
+          if (line && !hasBanned(line) && (credited.length === 0 || credited.some((c) => line.toLowerCase().includes(c.toLowerCase())))) {
             why[m] = line;
             kept++;
           }
         }
-        return { ...s, blurb: w.blurb?.trim() || s.blurb, whyByMember: why };
+        return { ...s, blurb: (w.blurb?.trim() && !hasBanned(w.blurb) ? w.blurb.trim() : s.blurb), whyByMember: why };
       });
       return {
-        value: { ...plan, title: (data.title?.trim() || plan.title).slice(0, 70), summary: data.summary?.trim() || plan.summary, stops },
+        value: { ...plan, title: (data.title?.trim() && !hasBanned(data.title) ? data.title.trim() : plan.title).slice(0, 70), summary: data.summary?.trim() && !hasBanned(data.summary) ? data.summary.trim() : plan.summary, stops },
         summary: `${kept}/${total} reasons rewritten · each names a favourite Qloo credited`,
       };
     });

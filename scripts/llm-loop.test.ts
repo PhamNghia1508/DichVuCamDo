@@ -8,6 +8,7 @@
 import { leftOut, refineAgent, runAgent, validateRequest } from "../lib/agent/run";
 import { bridgeSearch, harmonicMean } from "../lib/agent/consensus";
 import { makeMockClient } from "../lib/qloo";
+import { hasBanned } from "../lib/agent/writer";
 import type { AgentEvent } from "../lib/types";
 
 process.env.LLM_API_KEY = "test";
@@ -20,6 +21,7 @@ let script: Script = () => ({ content: "hi" });
 let turn = 0;
 let fail = false;
 let writerCalls = 0;
+let writerBannedOnce = false; // when set, the first writer reply uses banned words → expect one retry
 
 const realFetch = globalThis.fetch;
 globalThis.fetch = (async (url: string, init?: RequestInit) => {
@@ -32,7 +34,7 @@ globalThis.fetch = (async (url: string, init?: RequestInit) => {
     writerCalls++;
     const schema = body.response_format.json_schema.schema;
     const stops = Object.fromEntries(Object.keys(schema.properties.stops.properties).map((k) => [k, { blurb: `new ${k}`, why: { A: "Generic line with no favourite.", B: "Generic.", C: "Generic." } }]));
-    return new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: JSON.stringify({ title: "Polished", summary: "Polished summary.", stops }) } }] }), { status: 200 });
+    return new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: JSON.stringify(writerBannedOnce && body.messages.length === 2 ? { title: "A perfect vibe", summary: "So much energy.", stops } : { title: "Polished", summary: "Polished summary.", stops }) } }] }), { status: 200 });
   }
   const msg = script(body, turn++);
   return new Response(JSON.stringify({ choices: [{ message: { role: "assistant", ...(msg as object) } }] }), { status: 200, headers: { "content-type": "application/json" } });
@@ -95,6 +97,16 @@ const req = () =>
   for (const s of plan.stops) for (const m of names) if ((s.drivers?.[m]?.length ?? 0) > 0 && /^Generic/.test(s.whyByMember[m])) fail_(`ungrounded writer line kept for ${m} at ${s.slot}`);
   if (!events.some((e) => e.type === "thought" && e.text === "Picking the fairest options.")) fail_("model reasoning not streamed");
   console.log("LLM PLAN OK");
+
+  // 1b. banned-word post-filter: first copy uses "vibe"/"energy" → one retry → clean copy
+  writerBannedOnce = true;
+  writerCalls = 0;
+  turn = 0;
+  const pb = await runAgent(req(), () => {}, makeMockClient());
+  writerBannedOnce = false;
+  if (writerCalls !== 2 || pb.title !== "Polished" || /vibe|energy/i.test(pb.summary ?? "")) fail_(`banned-word retry: calls=${writerCalls} title=${pb.title}`);
+  if (!hasBanned("good vibes only") || !hasBanned("Such energy") || hasBanned("a lively room")) fail_("hasBanned");
+  console.log("BANNED-WORD FILTER OK");
 
   // 2. critic → bridge → finalize
   let sawCritic = false;
