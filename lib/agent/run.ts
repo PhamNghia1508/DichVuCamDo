@@ -120,11 +120,22 @@ async function llmLoop(ctx: ToolContext, emit: Emit, apiKey: string): Promise<Pl
   const tools = TOOLS.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } }));
 
   for (let step = 0; step < 12; step++) {
-    const res = await fetch(`${base}/chat/completions`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, messages, tools, tool_choice: "auto", temperature: 0.4 }),
-    });
+    let res: Response | undefined;
+    // Free-tier LLM keys are rate-limited: retry 429/5xx a few times with backoff.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      res = await fetch(`${base}/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ model, messages, tools, tool_choice: "auto", temperature: 0.4 }),
+      });
+      if (res.ok) break;
+      // Groq returns 400 tool_use_failed when the model emits malformed tool JSON; a retry usually fixes it.
+      const retryable = res.status === 429 || res.status >= 500 || (res.status === 400 && (await res.clone().text()).includes("tool_use_failed"));
+      if (!retryable) break;
+      const ra = Number(res.headers.get("retry-after"));
+      await new Promise((r) => setTimeout(r, Number.isFinite(ra) && ra > 0 ? Math.min(ra, 12) * 1000 : 1500 * 2 ** attempt));
+    }
+    if (!res) throw new Error("LLM request failed");
     if (!res.ok) throw new Error(`LLM ${res.status}: ${(await res.text()).slice(0, 160)}`);
     const data = await res.json();
     const msg = data?.choices?.[0]?.message;

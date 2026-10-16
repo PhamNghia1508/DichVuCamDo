@@ -136,7 +136,7 @@ export const TOOLS: ToolSpec[] = [
   {
     name: "finalize_itinerary",
     description:
-      "Publish the final shareable itinerary. Use only ids returned by group_consensus. whyByMember must have one short, specific sentence per member that references that member's own favourites.",
+      "Publish the final shareable itinerary. Use only ids returned by group_consensus. whyByMember must have one short, specific sentence per member, written to that member in the second person (\"you\", never he/she/his/her), naming the favourites that group_consensus explainability says drove the pick. Never invent menu items, prices or facts not present in tool results.",
     parameters: {
       type: "object",
       properties: {
